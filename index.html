@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MOCHI — Interactive 3D Cat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink: #e8eef4;
+    --muted: #93a1ad;
+    --accent: #6fc3ff;
+    --panel: rgba(18, 22, 26, 0.55);
+    --line: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #12161a;
+    font-family: "Inter", system-ui, sans-serif;
+    color: var(--ink);
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; }
+
+  /* ---------- UI chrome ---------- */
+  .brand { position: fixed; top: 26px; left: 30px; pointer-events: none; user-select: none; }
+  .brand h1 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 4px; }
+  .brand h1 span { color: var(--accent); }
+  .brand p { margin: 5px 0 0; font-size: 11px; font-weight: 500; letter-spacing: 1.5px; color: var(--muted); text-transform: uppercase; }
+  .chip {
+    position: fixed; top: 28px; right: 30px;
+    font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+    color: var(--muted); text-transform: uppercase;
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 7px 12px; border-radius: 100px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    pointer-events: none; user-select: none;
+  }
+  .hints {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 16px; align-items: center;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.4px; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line);
+    padding: 9px 18px; border-radius: 100px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    pointer-events: none; user-select: none; white-space: nowrap;
+  }
+  .hints b { color: var(--ink); font-weight: 600; }
+  .hints i { color: rgba(255,255,255,0.18); font-style: normal; }
+
+  /* ---------- control panel ---------- */
+  #panel {
+    position: fixed; right: 22px; top: 50%; transform: translateY(-50%);
+    width: 184px; z-index: 5;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    padding: 12px 12px 10px;
+    user-select: none;
+  }
+  #gear {
+    position: absolute; top: 8px; right: 8px;
+    width: 24px; height: 24px; border-radius: 8px;
+    border: 1px solid var(--line); background: transparent;
+    color: var(--muted); font-size: 12px; cursor: pointer; line-height: 1;
+  }
+  #gear:hover { color: var(--ink); border-color: rgba(255,255,255,0.25); }
+  #panel.closed .panel-body { display: none; }
+  .sec { margin-bottom: 12px; }
+  .sec-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 2px;
+    color: var(--muted); text-transform: uppercase; margin: 0 0 7px 2px;
+  }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .grid button, .wide-btn {
+    appearance: none; cursor: pointer;
+    background: rgba(255,255,255,0.04); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 9px;
+    font-family: inherit; font-size: 10.5px; font-weight: 600;
+    padding: 7px 4px; letter-spacing: 0.3px;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .grid button:hover, .wide-btn:hover { border-color: rgba(255,255,255,0.3); }
+  .grid button.on, .wide-btn.on {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(111, 195, 255, 0.1);
+  }
+  .grid button:disabled { opacity: 0.35; cursor: default; }
+  .grid button.failed { border-color: #e06c6c; color: #e06c6c; }
+  .swatches { display: flex; gap: 8px; padding-left: 2px; }
+  .swatches button {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--c); border: 2px solid transparent; cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+  .swatches button:hover { transform: scale(1.15); }
+  .swatches button.on { border-color: var(--accent); }
+  .credit {
+    font-size: 8.5px; color: var(--muted); letter-spacing: 0.5px;
+    text-align: center; margin-top: 2px; opacity: 0.7;
+  }
+
+  /* ---------- loader ---------- */
+  #loader {
+    position: fixed; inset: 0; z-index: 10;
+    background: #12161a;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; transition: opacity 0.7s ease;
+  }
+  #loader.hidden { opacity: 0; pointer-events: none; }
+  #loader .paw { font-size: 42px; animation: pulse 1.1s ease-in-out infinite; }
+  #loader .txt { font-size: 10px; font-weight: 600; letter-spacing: 3px; color: var(--muted); text-transform: uppercase; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.7; } }
+
+  /* drop overlay */
+  #dropHint {
+    position: fixed; inset: 12px; z-index: 9; border-radius: 18px;
+    border: 2px dashed var(--accent); background: rgba(111,195,255,0.08);
+    display: none; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--accent);
+    pointer-events: none;
+  }
+  #dropHint.show { display: flex; }
+
+  @media (max-width: 720px) {
+    .hints { gap: 10px; padding: 8px 14px; font-size: 10px; }
+    .brand { top: 18px; left: 20px; }
+    .chip { display: none; }
+    #panel { right: 12px; width: 160px; }
+  }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="loader">
+  <div class="paw">🐾</div>
+  <div class="txt">Loading scene</div>
+</div>
+
+<header class="brand">
+  <h1>MOCHI<span>.</span></h1>
+  <p>Interactive WebGL Companion</p>
+</header>
+<div class="chip">three.js · webgl2 · 60fps</div>
+<footer class="hints">
+  <span><b>Drag</b> orbit</span><i>|</i>
+  <span><b>Click cat</b> hop + meow</span><i>|</i>
+  <span><b>Drop .glb</b> your own model</span>
+</footer>
+
+<aside id="panel">
+  <button id="gear" title="Collapse panel">⚙</button>
+  <div class="panel-body">
+    <div class="sec">
+      <div class="sec-title">Model</div>
+      <div class="grid" id="modelGrid"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Scene</div>
+      <div class="grid">
+        <button id="btnDay">☀️ Day</button>
+        <button id="btnDof">🌫️ DOF</button>
+        <button id="btnBloom" class="on">✨ Bloom</button>
+        <button id="btnSpin" class="on">🔄 Spin</button>
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Sound</div>
+      <div class="grid">
+        <button id="btnMeow">🐱 Meow</button>
+        <button id="btnPurr">💤 Purr</button>
+        <button id="btnAmb">🍃 Ambience</button>
+        <button id="btnCam">📷 Reset</button>
+      </div>
+    </div>
+    <div class="sec" id="furSec">
+      <div class="sec-title">Toon fur</div>
+      <div class="swatches" id="furRow">
+        <button data-fur="orange" class="on" style="--c:#f2a24b" title="Orange tabby"></button>
+        <button data-fur="grey" style="--c:#9aa3ab" title="Grey"></button>
+        <button data-fur="black" style="--c:#45454e" title="Black"></button>
+        <button data-fur="cream" style="--c:#f0e7da" title="Cream"></button>
+      </div>
+    </div>
+    <div class="credit">glb models · 3dassets.dev · CC0</div>
+  </div>
+</aside>
+
+<div id="dropHint">DROP .GLB TO LOAD YOUR CAT</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+/* ============================================================
+   STATE
+============================================================ */
+const state = {
+  day: false,        // false = night (default look)
+  dof: false,
+  bloom: true,
+  spin: true,
+  purr: false,
+  ambience: false,
+  model: 'toon',
+};
+
+/* ============================================================
+   RENDERER / SCENE / CAMERA
+============================================================ */
+const app = document.getElementById('app');
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0b0e12, 16, 42);
+
+const HOME_POS = new THREE.Vector3(2.6, 2.3, 5.8);
+const HOME_TGT = new THREE.Vector3(0, 1.3, 0);
+const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 120);
+camera.position.copy(HOME_POS);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.target.copy(HOME_TGT);
+controls.maxPolarAngle = Math.PI * 0.52;
+controls.minDistance = 3;
+controls.maxDistance = 12;
+controls.enablePan = false;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.7;
+
+let idleTimer;
+controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(idleTimer); });
+controls.addEventListener('end', () => {
+  idleTimer = setTimeout(() => { if (state.spin) controls.autoRotate = true; }, 3500);
+});
+
+/* ============================================================
+   STUDIO BACKDROP (gradient cyclorama dome)
+============================================================ */
+const dome = new THREE.Mesh(
+  new THREE.SphereGeometry(60, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      top: { value: new THREE.Color(0x39434e) },
+      bottom: { value: new THREE.Color(0x12161a) },
+    },
+    vertexShader: /* glsl */`
+      varying vec3 vP;
+      void main() {
+        vP = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 top; uniform vec3 bottom; varying vec3 vP;
+      void main() {
+        float h = normalize(vP).y * 0.5 + 0.5;
+        gl_FragColor = vec4(mix(bottom, top, pow(h, 1.4)), 1.0);
+      }`,
+  })
+);
+scene.add(dome);
+
+/* ============================================================
+   LIGHTING — 3-point studio setup
+============================================================ */
+const hemi = new THREE.HemisphereLight(0x33415a, 0x14181d, 0.35);
+scene.add(hemi);
+
+const key = new THREE.DirectionalLight(0x9db8e8, 0.85);   // moonlight by default
+key.position.set(-4, 7, -3);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+Object.assign(key.shadow.camera, { left: -6, right: 6, top: 8, bottom: -4, near: 1, far: 28 });
+key.shadow.camera.updateProjectionMatrix();
+key.shadow.bias = -0.0004;
+scene.add(key);
+
+const rim = new THREE.DirectionalLight(0x6fc3ff, 1.8);
+rim.position.set(-5, 4.5, -6);
+scene.add(rim);
+
+const fill = new THREE.DirectionalLight(0xffffff, 0.3);
+fill.position.set(0, 2, 8);
+scene.add(fill);
+
+/* ============================================================
+   FLOOR + PEDESTAL + ACCENT RING
+============================================================ */
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(60, 64),
+  new THREE.MeshStandardMaterial({ color: 0x181d22, roughness: 0.95 })
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -0.121;
+floor.receiveShadow = true;
+scene.add(floor);
+
+const pedestal = new THREE.Mesh(
+  new THREE.CylinderGeometry(2.0, 2.12, 0.12, 72),
+  new THREE.MeshPhysicalMaterial({ color: 0x232b33, roughness: 0.45, metalness: 0.15 })
+);
+pedestal.position.y = -0.06;
+pedestal.receiveShadow = true;
+scene.add(pedestal);
+
+const ring = new THREE.Mesh(
+  new THREE.TorusGeometry(1.98, 0.014, 8, 128),
+  new THREE.MeshBasicMaterial({ color: 0x6fc3ff })
+);
+ring.rotation.x = -Math.PI / 2;
+ring.position.y = 0.004;
+scene.add(ring);
+
+/* ============================================================
+   SKY OBJECTS — stars, sun disc, moon disc
+============================================================ */
+const starCount = 420;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const v = new THREE.Vector3().randomDirection();
+  v.y = Math.abs(v.y) * 0.9 + 0.1;
+  v.normalize().multiplyScalar(48);
+  starPos.set([v.x, v.y, v.z], i * 3);
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+  color: 0xffffff, size: 0.16, transparent: true, opacity: 0.9,
+  fog: false, depthWrite: false,
+}));
+scene.add(stars);
+
+const sunDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(2.2, 24, 16),
+  new THREE.MeshBasicMaterial({ color: 0xfff3c0, transparent: true, opacity: 0, fog: false })
+);
+sunDisc.position.set(18, 24, -35);
+scene.add(sunDisc);
+
+const moonDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(1.5, 24, 16),
+  new THREE.MeshBasicMaterial({ color: 0xdce8ff, transparent: true, opacity: 1, fog: false })
+);
+moonDisc.position.set(-16, 20, -32);
+scene.add(moonDisc);
+
+/* ============================================================
+   DAY / NIGHT PALETTES (dn: 0 = night, 1 = day)
+============================================================ */
+const PAL = {
+  domeTop:   [new THREE.Color(0x1b2431), new THREE.Color(0x87b8e0)],
+  domeBot:   [new THREE.Color(0x0b0e12), new THREE.Color(0xdfe9f2)],
+  fog:       [new THREE.Color(0x0b0e12), new THREE.Color(0xdfe9f2)],
+  hemiSky:   [new THREE.Color(0x33415a), new THREE.Color(0xbfd9f2)],
+  hemiGnd:   [new THREE.Color(0x14181d), new THREE.Color(0x8a97a3)],
+  keyCol:    [new THREE.Color(0x9db8e8), new THREE.Color(0xfff0d4)],
+  floor:     [new THREE.Color(0x181d22), new THREE.Color(0x9fb0bd)],
+  pedestal:  [new THREE.Color(0x232b33), new THREE.Color(0x3a4550)],
+  ringCol:   [new THREE.Color(0x6fc3ff), new THREE.Color(0x2f9be8)],
+  keyPosN:   new THREE.Vector3(-4, 7, -3),
+  keyPosD:   new THREE.Vector3(5, 8, 3),
+};
+let dn = 0, dnTarget = 0;
+
+function applyDayNight(k) {
+  const c = new THREE.Color();
+  dome.material.uniforms.top.value.lerpColors(PAL.domeTop[0], PAL.domeTop[1], k);
+  dome.material.uniforms.bottom.value.lerpColors(PAL.domeBot[0], PAL.domeBot[1], k);
+  scene.fog.color.lerpColors(PAL.fog[0], PAL.fog[1], k);
+  hemi.color.lerpColors(PAL.hemiSky[0], PAL.hemiSky[1], k);
+  hemi.groundColor.lerpColors(PAL.hemiGnd[0], PAL.hemiGnd[1], k);
+  hemi.intensity = THREE.MathUtils.lerp(0.35, 0.65, k);
+  key.color.lerpColors(PAL.keyCol[0], PAL.keyCol[1], k);
+  key.intensity = THREE.MathUtils.lerp(0.85, 2.6, k);
+  key.position.lerpVectors(PAL.keyPosN, PAL.keyPosD, k);
+  rim.intensity = THREE.MathUtils.lerp(1.8, 0.8, k);
+  floor.material.color.lerpColors(PAL.floor[0], PAL.floor[1], k);
+  pedestal.material.color.lerpColors(PAL.pedestal[0], PAL.pedestal[1], k);
+  ring.material.color.lerpColors(PAL.ringCol[0], PAL.ringCol[1], k);
+  renderer.toneMappingExposure = THREE.MathUtils.lerp(1.0, 1.12, k);
+  stars.material.opacity = (1 - k) * 0.9;
+  moonDisc.material.opacity = 1 - k;
+  sunDisc.material.opacity = k * 0.95;
+}
+applyDayNight(0);
+
+/* ============================================================
+   TOON CAT MATERIALS
+============================================================ */
+const fur = new THREE.MeshPhysicalMaterial({
+  color: 0xf2a24b, roughness: 0.85,
+  sheen: 0.5, sheenRoughness: 0.7, sheenColor: 0xffd9a0, envMapIntensity: 0.45,
+});
+const furDark = new THREE.MeshPhysicalMaterial({
+  color: 0xd97f2e, roughness: 0.88,
+  sheen: 0.4, sheenRoughness: 0.75, sheenColor: 0xffd9a0, envMapIntensity: 0.4,
+});
+const cream = new THREE.MeshPhysicalMaterial({
+  color: 0xfff3e0, roughness: 0.9,
+  sheen: 0.45, sheenRoughness: 0.8, sheenColor: 0xffffff, envMapIntensity: 0.4,
+});
+const pink = new THREE.MeshPhysicalMaterial({
+  color: 0xf7a8b8, roughness: 0.5, clearcoat: 0.5, clearcoatRoughness: 0.4, envMapIntensity: 0.5,
+});
+const dark = new THREE.MeshStandardMaterial({ color: 0x232028, roughness: 0.35 });
+const amber = new THREE.MeshPhysicalMaterial({
+  color: 0xffb63d, roughness: 0.12,
+  clearcoat: 1.0, clearcoatRoughness: 0.08,
+  emissive: 0x241a05, emissiveIntensity: 0.4, envMapIntensity: 1.2,
+});
+const whiteHot = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+const FUR_PRESETS = {
+  orange: [0xf2a24b, 0xd97f2e],
+  grey:   [0x9aa3ab, 0x78828b],
+  black:  [0x45454e, 0x32323a],
+  cream:  [0xf0e7da, 0xd9cdbd],
+};
+
+/* ============================================================
+   TOON CAT (procedural)
+============================================================ */
+const toonCat = new THREE.Group();
+scene.add(toonCat);
+
+function part(geo, mat, x, y, z, parent = toonCat) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  parent.add(m);
+  return m;
+}
+
+const body = part(new THREE.SphereGeometry(1, 48, 32), fur, 0, 1.05, 0);
+body.scale.set(1, 1.2, 0.9);
+
+const chest = part(new THREE.SphereGeometry(0.62, 32, 24), cream, 0, 0.95, 0.62);
+chest.scale.set(0.7, 0.95, 0.55);
+
+const spine = part(new THREE.BoxGeometry(0.14, 0.02, 0.95), furDark, 0, 2.13, -0.28);
+spine.rotation.x = 0.28;
+spine.castShadow = false;
+
+for (const s of [-1, 1]) {
+  const h = part(new THREE.SphereGeometry(0.45, 32, 24), fur, s * 0.62, 0.6, -0.05);
+  h.scale.set(0.8, 1.0, 1.2);
+}
+for (const s of [-1, 1]) {
+  part(new THREE.CapsuleGeometry(0.15, 0.55, 6, 16), fur, s * 0.3, 0.5, 0.5);
+  const paw = part(new THREE.SphereGeometry(0.19, 24, 16), cream, s * 0.3, 0.12, 0.6);
+  paw.scale.set(1, 0.65, 1.35);
+}
+for (const s of [-1, 1]) {
+  const f = part(new THREE.SphereGeometry(0.2, 24, 16), fur, s * 0.56, 0.14, 0.5);
+  f.scale.set(1, 0.65, 1.5);
+  f.rotation.y = -s * 0.3;
+}
+
+/* head */
+const head = new THREE.Group();
+head.position.set(0, 2.42, 0.15);
+toonCat.add(head);
+
+const skull = part(new THREE.SphereGeometry(0.72, 48, 32), fur, 0, 0, 0, head);
+skull.scale.set(1, 0.92, 0.95);
+
+for (const s of [-1, 1]) {
+  const fluff = part(new THREE.SphereGeometry(0.24, 20, 14), fur, s * 0.58, -0.2, 0.28, head);
+  fluff.scale.set(0.55, 0.65, 0.75);
+}
+
+function makeEar(side) {
+  const g = new THREE.Group();
+  g.position.set(side * 0.38, 0.48, 0.02);
+  g.userData.baseZ = -side * 0.28;
+  g.rotation.z = g.userData.baseZ;
+  g.rotation.x = -0.1;
+  part(new THREE.ConeGeometry(0.27, 0.52, 24), fur, 0, 0.24, 0, g);
+  part(new THREE.ConeGeometry(0.14, 0.3, 16), pink, 0, 0.16, 0.09, g).castShadow = false;
+  head.add(g);
+  return g;
+}
+const earL = makeEar(-1);
+const earR = makeEar(1);
+
+function makeEye(side) {
+  const g = new THREE.Group();
+  g.position.set(side * 0.27, 0.05, 0.58);
+  part(new THREE.SphereGeometry(0.135, 24, 16), amber, 0, 0, 0, g).castShadow = false;
+  const pupil = part(new THREE.SphereGeometry(0.07, 16, 12), dark, 0, 0, 0.075, g);
+  pupil.scale.set(0.55, 1.15, 0.6);
+  pupil.castShadow = false;
+  part(new THREE.SphereGeometry(0.032, 10, 8), whiteHot, -0.035 * side, 0.05, 0.115, g).castShadow = false;
+  head.add(g);
+  return g;
+}
+const eyeL = makeEye(-1);
+const eyeR = makeEye(1);
+
+for (const s of [-1, 1]) {
+  const cheek = part(new THREE.SphereGeometry(0.17, 20, 14), cream, s * 0.12, -0.24, 0.6, head);
+  cheek.scale.set(1, 0.8, 0.75);
+}
+const nose = part(new THREE.SphereGeometry(0.075, 16, 12), pink, 0, -0.15, 0.72, head);
+nose.scale.set(1.15, 0.75, 0.7);
+nose.castShadow = false;
+for (const s of [-1, 1]) {
+  const lip = part(new THREE.SphereGeometry(0.045, 12, 8), dark, s * 0.05, -0.27, 0.7, head);
+  lip.scale.set(1, 0.5, 0.5);
+  lip.castShadow = false;
+}
+
+const stripeGeo = new THREE.BoxGeometry(0.055, 0.02, 0.24);
+[[-0.17, 0.53, 0.4, 0.3], [0, 0.56, 0.42, 0], [0.17, 0.53, 0.4, -0.3]].forEach(([x, y, z, ry]) => {
+  const st = part(stripeGeo, furDark, x, y, z, head);
+  st.rotation.set(-0.95, ry, 0);
+  st.castShadow = false;
+});
+
+const whiskerMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45 });
+for (const s of [-1, 1]) {
+  for (let i = 0; i < 3; i++) {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(s * 0.3, -0.14 - i * 0.045, 0.7),
+      new THREE.Vector3(s * 1.0, -0.02 - i * 0.08, 0.58),
+    ]);
+    head.add(new THREE.Line(geo, whiskerMat));
+  }
+}
+
+/* tail */
+const tailSegs = [];
+let tailParent = new THREE.Group();
+tailParent.position.set(0, 0.6, -0.7);
+toonCat.add(tailParent);
+
+for (let i = 0; i < 7; i++) {
+  const g = new THREE.Group();
+  g.position.y = i === 0 ? 0 : 0.24;
+  const r = 0.15 - i * 0.011;
+  part(new THREE.CapsuleGeometry(r, 0.24, 6, 14), i >= 5 ? furDark : fur, 0, 0.12 + r * 0.2, 0, g);
+  g.userData.baseX = i === 0 ? -1.15 : 0.24;
+  g.rotation.x = g.userData.baseX;
+  tailParent.add(g);
+  tailParent = g;
+  tailSegs.push(g);
+}
+
+/* ============================================================
+   GLB MODEL SYSTEM (lazy-loaded, normalized, swappable)
+============================================================ */
+const MODELS = {
+  toon:      { label: 'Toon' },
+  shorthair: { label: 'Shorthair', url: 'https://cdn.3dassets.dev/assets/28146/v1/model.glb' },
+  siamese:   { label: 'Siamese',   url: 'https://cdn.3dassets.dev/assets/28148/v1/model.glb' },
+  ginger:    { label: 'Ginger',    url: 'https://cdn.3dassets.dev/assets/29205/v1/model.glb' },
+  sphynx:    { label: 'Sphynx',    url: 'https://cdn.3dassets.dev/assets/28149/v1/model.glb' },
+};
+const modelCache = { toon: toonCat };
+const gltfLoader = new GLTFLoader();
+let activeRoot = toonCat;
+
+function adoptGltf(gltf) {
+  const inner = gltf.scene;
+  inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; } });
+  inner.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(inner);
+  const size = box.getSize(new THREE.Vector3());
+  inner.scale.setScalar(1.55 / (size.y || 1));
+  inner.updateWorldMatrix(true, true);
+  box.setFromObject(inner);
+  const center = box.getCenter(new THREE.Vector3());
+  inner.position.x -= center.x;
+  inner.position.z -= center.z;
+  inner.position.y -= box.min.y;
+  const root = new THREE.Group();
+  root.add(inner);
+  if (gltf.animations && gltf.animations.length) {
+    root.userData.mixer = new THREE.AnimationMixer(inner);
+    root.userData.mixer.clipAction(gltf.animations[0]).play();
+  }
+  root.visible = false;
+  scene.add(root);
+  return root;
+}
+
+async function selectModel(key, btn) {
+  if (state.model === key) return;
+  state.model = key;
+  document.querySelectorAll('#modelGrid button').forEach((b) => b.classList.toggle('on', b.dataset.model === key));
+  document.getElementById('furSec').style.display = key === 'toon' ? '' : 'none';
+
+  let root = modelCache[key];
+  if (!root) {
+    if (btn) btn.textContent = '…';
+    try {
+      const gltf = await gltfLoader.loadAsync(MODELS[key].url);
+      root = adoptGltf(gltf);
+      modelCache[key] = root;
+    } catch (err) {
+      console.error('Model failed to load:', err);
+      if (btn) { btn.textContent = MODELS[key].label; btn.classList.add('failed'); btn.title = 'Failed to load (offline?)'; }
+      state.model = 'toon';
+      document.querySelectorAll('#modelGrid button').forEach((b) => b.classList.toggle('on', b.dataset.model === 'toon'));
+      document.getElementById('furSec').style.display = '';
+      return;
+    }
+    if (btn) btn.textContent = MODELS[key].label;
+  }
+  activeRoot.visible = false;
+  root.visible = true;
+  root.position.set(0, 0, 0);
+  root.scale.set(1, 1, 1);
+  activeRoot = root;
+  hopT = 1;
+}
+
+/* model picker buttons */
+const modelGrid = document.getElementById('modelGrid');
+for (const [key, def] of Object.entries(MODELS)) {
+  const b = document.createElement('button');
+  b.textContent = def.label;
+  b.dataset.model = key;
+  if (key === 'toon') b.classList.add('on');
+  b.addEventListener('click', () => selectModel(key, b));
+  modelGrid.appendChild(b);
+}
+
+/* drag & drop your own .glb */
+const dropHint = document.getElementById('dropHint');
+addEventListener('dragover', (e) => { e.preventDefault(); dropHint.classList.add('show'); });
+addEventListener('dragleave', (e) => { if (!e.relatedTarget) dropHint.classList.remove('show'); });
+addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropHint.classList.remove('show');
+  const file = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!file || !/\.glb$/i.test(file.name)) return;
+  file.arrayBuffer().then((buf) => {
+    gltfLoader.parse(buf, '', (gltf) => {
+      MODELS.custom = { label: file.name.replace(/\.glb$/i, '').slice(0, 12) || 'Custom' };
+      modelCache.custom = adoptGltf(gltf);
+      let b = modelGrid.querySelector('[data-model="custom"]');
+      if (!b) {
+        b = document.createElement('button');
+        b.dataset.model = 'custom';
+        b.addEventListener('click', () => selectModel('custom', b));
+        modelGrid.appendChild(b);
+      }
+      b.textContent = MODELS.custom.label;
+      selectModel('custom', b);
+    }, (err) => console.error('Parse failed:', err));
+  });
+});
+
+/* ============================================================
+   YARN BALL + DUST
+============================================================ */
+const yarn = new THREE.Group();
+yarn.position.set(1.45, 0.34, 0.85);
+scene.add(yarn);
+const yarnMat = new THREE.MeshPhysicalMaterial({ color: 0x3fa7c4, roughness: 0.7, sheen: 0.5, sheenColor: 0xbfe8f5, sheenRoughness: 0.6 });
+const yarnDark = new THREE.MeshStandardMaterial({ color: 0x2f86a3, roughness: 0.8 });
+{
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.34, 32, 24), yarnMat);
+  m.castShadow = true; yarn.add(m);
+  for (let i = 0; i < 4; i++) {
+    const loop = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.018, 8, 48), yarnDark);
+    loop.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    yarn.add(loop);
+  }
+}
+
+const pCount = 70;
+const pPos = new Float32Array(pCount * 3);
+for (let i = 0; i < pCount; i++) {
+  pPos[i * 3] = (Math.random() - 0.5) * 18;
+  pPos[i * 3 + 1] = Math.random() * 6.5 + 0.3;
+  pPos[i * 3 + 2] = (Math.random() - 0.5) * 18;
+}
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const dust = new THREE.Points(pGeo, new THREE.PointsMaterial({
+  color: 0xaec6d8, size: 0.045, transparent: true, opacity: 0.35,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+}));
+scene.add(dust);
+
+/* ============================================================
+   POST-PROCESSING — bokeh(DOF) · bloom · grade · tonemap · FXAA
+============================================================ */
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      vec2 d = vUv - 0.5;
+      float vig = smoothstep(0.95, 0.35, length(d) * 1.35);
+      c.rgb *= mix(0.68, 1.0, vig);
+      float g = hash(vUv * vec2(1920.0, 1080.0) + fract(uTime) * 7.13) - 0.5;
+      c.rgb += g * 0.03;
+      gl_FragColor = c;
+    }`,
+};
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bokehPass = new BokehPass(scene, camera, { focus: 6.5, aperture: 0.45, maxblur: 0.011 });
+bokehPass.enabled = false;
+composer.addPass(bokehPass);
+
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.45, 0.55, 0.6);
+composer.addPass(bloomPass);
+
+const gradePass = new ShaderPass(GradeShader);
+composer.addPass(gradePass);
+
+composer.addPass(new OutputPass());
+
+const fxaa = new ShaderPass(FXAAShader);
+const pr = renderer.getPixelRatio();
+fxaa.material.uniforms.resolution.value.set(1 / (innerWidth * pr), 1 / (innerHeight * pr));
+composer.addPass(fxaa);
+
+/* ============================================================
+   SOUND ENGINE — fully synthesized (WebAudio, no audio files)
+============================================================ */
+const Snd = {
+  ctx: null, purr: null, amb: null,
+  ensure() {
+    if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx;
+  },
+  noiseBuffer(ctx, seconds = 2) {
+    const b = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    return b;
+  },
+  meow() {
+    const ctx = this.ensure();
+    const t = ctx.currentTime;
+    const base = 520 + Math.random() * 260;
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.linearRampToValueAtTime(base * 1.6, t + 0.12);
+    o.frequency.exponentialRampToValueAtTime(base * 0.7, t + 0.45);
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.5;
+    f.frequency.setValueAtTime(1400, t);
+    f.frequency.exponentialRampToValueAtTime(700, t + 0.45);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.28, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(f); f.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.55);
+  },
+  startPurr() {
+    if (this.purr) return;
+    const ctx = this.ensure();
+    const t = ctx.currentTime;
+    const master = ctx.createGain(); master.gain.value = 0;
+    master.connect(ctx.destination);
+    const amp = ctx.createGain(); amp.gain.value = 0.6;
+    amp.connect(master);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 24;
+    const lg = ctx.createGain(); lg.gain.value = 0.45;
+    lfo.connect(lg); lg.connect(amp.gain);
+    const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = 48;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+    o.connect(lp); lp.connect(amp);
+    const ns = ctx.createBufferSource(); ns.buffer = this.noiseBuffer(ctx); ns.loop = true;
+    const nlp = ctx.createBiquadFilter(); nlp.type = 'lowpass'; nlp.frequency.value = 300;
+    const ng = ctx.createGain(); ng.gain.value = 0.6;
+    ns.connect(nlp); nlp.connect(ng); ng.connect(amp);
+    o.start(); ns.start(); lfo.start();
+    master.gain.linearRampToValueAtTime(0.5, t + 0.6);
+    this.purr = { master, nodes: [o, ns, lfo] };
+  },
+  stopPurr() {
+    if (!this.purr) return;
+    const { master, nodes } = this.purr;
+    this.purr = null;
+    master.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.35);
+    setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch (e) {} }), 450);
+  },
+  startAmbience() {
+    this.stopAmbience(true);
+    const ctx = this.ensure();
+    const t = ctx.currentTime;
+    const mode = state.day ? 'day' : 'night';
+    const master = ctx.createGain(); master.gain.value = 0;
+    master.connect(ctx.destination);
+    const ns = ctx.createBufferSource(); ns.buffer = this.noiseBuffer(ctx); ns.loop = true;
+    const nodes = [ns];
+    if (mode === 'day') {
+      /* gentle breeze: low-passed noise slowly swelling */
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 320; lp.Q.value = 0.4;
+      const g = ctx.createGain(); g.gain.value = 0.5;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.08;
+      const lg = ctx.createGain(); lg.gain.value = 0.25;
+      lfo.connect(lg); lg.connect(g.gain);
+      ns.connect(lp); lp.connect(g); g.connect(master);
+      lfo.start(); nodes.push(lfo);
+      master.gain.linearRampToValueAtTime(0.045, t + 1.5);
+    } else {
+      /* crickets: pulsed high band-passed noise */
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 4300; bp.Q.value = 9;
+      const g = ctx.createGain(); g.gain.value = 0;
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 14;
+      const lg = ctx.createGain(); lg.gain.value = 0.5;
+      const bias = ctx.createConstantSource(); bias.offset.value = 0.5;
+      lfo.connect(lg); lg.connect(g.gain); bias.connect(g.gain);
+      const drift = ctx.createOscillator(); drift.frequency.value = 0.23;
+      const dg = ctx.createGain(); dg.gain.value = 600;
+      drift.connect(dg); dg.connect(bp.frequency);
+      ns.connect(bp); bp.connect(g); g.connect(master);
+      lfo.start(); drift.start(); bias.start();
+      nodes.push(lfo, drift, bias);
+      master.gain.linearRampToValueAtTime(0.035, t + 1.5);
+    }
+    ns.start();
+    this.amb = { master, nodes };
+  },
+  stopAmbience(immediate) {
+    if (!this.amb) return;
+    const { master, nodes } = this.amb;
+    this.amb = null;
+    if (immediate) { master.gain.value = 0; nodes.forEach((n) => { try { n.stop(); } catch (e) {} }); }
+    else {
+      master.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.4);
+      setTimeout(() => nodes.forEach((n) => { try { n.stop(); } catch (e) {} }), 500);
+    }
+  },
+};
+
+/* ============================================================
+   UI WIRING
+============================================================ */
+const $ = (id) => document.getElementById(id);
+
+$('gear').addEventListener('click', () => $('panel').classList.toggle('closed'));
+
+$('btnDay').addEventListener('click', () => {
+  state.day = !state.day;
+  dnTarget = state.day ? 1 : 0;
+  $('btnDay').textContent = state.day ? '🌙 Night' : '☀️ Day';
+  $('btnDay').classList.toggle('on', state.day);
+  if (state.ambience) Snd.startAmbience(); // restart with new mode
+});
+
+$('btnDof').addEventListener('click', () => {
+  state.dof = !state.dof;
+  bokehPass.enabled = state.dof;
+  $('btnDof').classList.toggle('on', state.dof);
+});
+
+$('btnBloom').addEventListener('click', () => {
+  state.bloom = !state.bloom;
+  bloomPass.enabled = state.bloom;
+  $('btnBloom').classList.toggle('on', state.bloom);
+});
+
+$('btnSpin').addEventListener('click', () => {
+  state.spin = !state.spin;
+  controls.autoRotate = state.spin;
+  $('btnSpin').classList.toggle('on', state.spin);
+});
+
+$('btnMeow').addEventListener('click', () => Snd.meow());
+
+$('btnPurr').addEventListener('click', () => {
+  state.purr = !state.purr;
+  if (state.purr) Snd.startPurr(); else Snd.stopPurr();
+  $('btnPurr').classList.toggle('on', state.purr);
+});
+
+$('btnAmb').addEventListener('click', () => {
+  state.ambience = !state.ambience;
+  if (state.ambience) Snd.startAmbience(); else Snd.stopAmbience();
+  $('btnAmb').classList.toggle('on', state.ambience);
+});
+
+let camTween = null;
+$('btnCam').addEventListener('click', () => {
+  camTween = { t: 0, fromPos: camera.position.clone(), fromTgt: controls.target.clone() };
+});
+
+$('furRow').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-fur]');
+  if (!b) return;
+  const [f, d] = FUR_PRESETS[b.dataset.fur];
+  fur.color.setHex(f);
+  furDark.color.setHex(d);
+  document.querySelectorAll('#furRow button').forEach((x) => x.classList.toggle('on', x === b));
+});
+
+/* ============================================================
+   POINTER INTERACTION
+============================================================ */
+const mouse = { x: 0, y: 0 };
+addEventListener('pointermove', (e) => {
+  mouse.x = (e.clientX / innerWidth) * 2 - 1;
+  mouse.y = -((e.clientY / innerHeight) * 2 - 1);
+});
+
+const ray = new THREE.Raycaster();
+const pv = new THREE.Vector2();
+let downX = 0, downY = 0, hopT = 1;
+renderer.domElement.addEventListener('pointerdown', (e) => { downX = e.clientX; downY = e.clientY; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return;
+  pv.set((e.clientX / innerWidth) * 2 - 1, -((e.clientY / innerHeight) * 2 - 1));
+  ray.setFromCamera(pv, camera);
+  if (ray.intersectObject(activeRoot, true).length && hopT >= 1) {
+    hopT = 0;
+    Snd.meow();
+  }
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+  fxaa.material.uniforms.resolution.value.set(
+    1 / (innerWidth * renderer.getPixelRatio()),
+    1 / (innerHeight * renderer.getPixelRatio())
+  );
+});
+
+/* ============================================================
+   ANIMATION LOOP
+============================================================ */
+const clock = new THREE.Clock();
+let nextBlink = 2.5, blinkT = 1;
+let nextTwitch = 4, twitchT = 1, twitchEar = null;
+let frames = 0;
+const loader = document.getElementById('loader');
+
+function hideLoader() {
+  if (!loader.isConnected) return;
+  loader.classList.add('hidden');
+  setTimeout(() => loader.remove(), 800);
+}
+setTimeout(hideLoader, 2500); // fallback if rAF is throttled
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.elapsedTime;
+
+  /* day/night transition */
+  if (dn !== dnTarget) {
+    dn = THREE.MathUtils.clamp(dn + Math.sign(dnTarget - dn) * dt / 1.4, 0, 1);
+    applyDayNight(dn);
+  }
+
+  /* camera reset tween */
+  if (camTween) {
+    camTween.t = Math.min(1, camTween.t + dt / 0.8);
+    const k = camTween.t < 0.5 ? 2 * camTween.t * camTween.t : 1 - Math.pow(-2 * camTween.t + 2, 2) / 2;
+    camera.position.lerpVectors(camTween.fromPos, HOME_POS, k);
+    controls.target.lerpVectors(camTween.fromTgt, HOME_TGT, k);
+    if (camTween.t >= 1) camTween = null;
+  }
+
+  const isToon = activeRoot === toonCat;
+
+  if (isToon) {
+    /* breathing */
+    const breath = Math.sin(t * 1.9);
+    body.scale.y = 1.2 * (1 + breath * 0.015);
+    body.scale.x = 1.0 * (1 - breath * 0.008);
+
+    /* tail wag */
+    for (let i = 0; i < tailSegs.length; i++) {
+      const s = tailSegs[i];
+      s.rotation.x = s.userData.baseX + Math.sin(t * 1.7 + i * 0.45) * 0.06;
+      s.rotation.z = Math.sin(t * 2.3 + i * 0.55) * 0.11;
+    }
+
+    /* blinking */
+    if (t > nextBlink) { blinkT = 0; nextBlink = t + 2 + Math.random() * 3.5; }
+    if (blinkT < 1) {
+      blinkT = Math.min(1, blinkT + dt / 0.22);
+      eyeL.scale.y = eyeR.scale.y = 1 - Math.sin(blinkT * Math.PI) * 0.93;
+    }
+
+    /* ear twitch */
+    if (t > nextTwitch) { twitchT = 0; twitchEar = Math.random() < 0.5 ? earL : earR; nextTwitch = t + 3 + Math.random() * 4; }
+    if (twitchT < 1 && twitchEar) {
+      twitchT = Math.min(1, twitchT + dt / 0.5);
+      twitchEar.rotation.z = twitchEar.userData.baseZ + Math.sin(twitchT * Math.PI * 2) * 0.14 * (1 - twitchT);
+    }
+
+    /* head follows the mouse */
+    head.rotation.y += (mouse.x * 0.55 - head.rotation.y) * 0.08;
+    head.rotation.x += (-mouse.y * 0.28 - head.rotation.x) * 0.08;
+    toonCat.rotation.y += (mouse.x * 0.12 - toonCat.rotation.y) * 0.05;
+  } else {
+    /* GLB model: subtle breathing + gentle look-at */
+    activeRoot.scale.y = 1 + Math.sin(t * 1.9) * 0.008;
+    activeRoot.rotation.y += (mouse.x * 0.35 - activeRoot.rotation.y) * 0.06;
+    if (activeRoot.userData.mixer) activeRoot.userData.mixer.update(dt);
+  }
+
+  /* hop with squash & stretch (applies to active cat) */
+  if (hopT < 1) {
+    hopT = Math.min(1, hopT + dt / 0.6);
+    const air = Math.sin(hopT * Math.PI);
+    activeRoot.position.y = air * 0.5;
+    activeRoot.scale.x = 1 - air * 0.07;
+    if (isToon) activeRoot.scale.y = 1 + air * 0.12;
+    activeRoot.scale.z = 1 - air * 0.07;
+  } else {
+    activeRoot.position.y = 0;
+    if (isToon) activeRoot.scale.set(1, 1, 1);
+  }
+
+  /* DOF focus tracks the cat */
+  if (state.dof && bokehPass.uniforms) {
+    bokehPass.uniforms['focus'].value = camera.position.distanceTo(controls.target);
+  }
+
+  /* ambient motion */
+  yarn.rotation.y = t * 0.4;
+  yarn.rotation.x = Math.sin(t * 0.6) * 0.1;
+  dust.rotation.y = t * 0.02;
+  stars.rotation.y = t * 0.005;
+
+  gradePass.uniforms.uTime.value = t;
+  controls.update();
+  composer.render();
+
+  frames++;
+  if (frames === 3) hideLoader();
+}
+animate();
+</script>
+</body>
+</html>
